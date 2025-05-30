@@ -1,0 +1,89 @@
+---
+- name: Configure subinterfaces, management IP, OSPF, and SSH on Spine Routers
+  hosts: spines
+  gather_facts: no
+  collections:
+    - cisco.ios
+
+  vars:
+    mgmt_ip_map:
+      spine1: 192.168.8.131
+      spine2: 192.168.8.132
+
+  tasks:
+    - name: Set management IP based on hostname
+      set_fact:
+        mgmt_ip: "{{ mgmt_ip_map[inventory_hostname] }}"
+
+    - name: Configure management IP on FastEthernet1/0 (for SSH)
+      ios_config:
+        lines:
+          - ip address {{ mgmt_ip }} 255.255.255.192
+          - description Management Interface
+          - no shutdown
+        parents: interface FastEthernet1/0
+
+    - name: Configure subinterface for VLAN 10 (DATA)
+      ios_config:
+        lines:
+          - encapsulation dot1Q 10
+          - ip address 192.168.10.1 255.255.255.0
+          - description DATA VLAN subinterface
+          - no shutdown
+        parents: interface FastEthernet0/0.10
+
+    - name: Configure subinterface for VLAN 20 (MGMT)
+      ios_config:
+        lines:
+          - encapsulation dot1Q 20
+          - ip address 192.168.20.1 255.255.255.0
+          - description MGMT VLAN subinterface
+          - no shutdown
+        parents: interface FastEthernet0/0.20
+
+    - name: Configure physical interface description and no shutdown
+      ios_config:
+        lines:
+          - description Connected to Leaf Switch
+          - no shutdown
+        parents: interface FastEthernet0/0
+
+    - name: Enable OSPF on VLAN 10 subinterface
+      ios_config:
+        lines:
+          - ip ospf 1 area 0
+        parents: interface FastEthernet0/0.10
+
+    - name: Enable OSPF on VLAN 20 subinterface
+      ios_config:
+        lines:
+          - ip ospf 1 area 0
+        parents: interface FastEthernet0/0.20
+
+    - name: Set hostname
+      ios_config:
+        lines:
+          - hostname {{ inventory_hostname }}
+
+    - name: Set domain name
+      ios_config:
+        lines:
+          - ip domain-name mn521.local
+
+    - name: Generate RSA key for SSH
+      ios_config:
+        lines:
+          - crypto key generate rsa modulus 1024
+
+    - name: Create local user for SSH access
+      ios_config:
+        lines:
+          - username ansible privilege 15 secret cisco123
+
+    - name: Configure VTY lines for SSH access
+      ios_config:
+        lines:
+          - login local
+          - transport input ssh
+        parents: line vty 0 4
+
